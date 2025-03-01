@@ -1,9 +1,5 @@
-import hashlib
-import time
-import json
+import hashlib, time, json, binascii, ecdsa
 from typing import List, Dict, Any
-import binascii
-import ecdsa
 
 class Transaction:
     def __init__(self, sender: str, recipient: str, amount: float):
@@ -23,8 +19,14 @@ class Transaction:
         }
     
     def calculate_hash(self) -> str:
-        """Calcule le hachage de la transaction."""
-        transaction_string = json.dumps(self.to_dict(), sort_keys=True)
+        """Calcule le hachage de la transaction sans inclure la signature."""
+        transaction_dict = {
+            'sender': self.sender,
+            'recipient': self.recipient,
+            'amount': self.amount,
+            'timestamp': self.timestamp
+        }
+        transaction_string = json.dumps(transaction_dict, sort_keys=True)
         return hashlib.sha256(transaction_string.encode()).hexdigest()
     
     def sign_transaction(self, private_key):
@@ -95,7 +97,7 @@ class Block:
         block_string = f"{self.index}{self.timestamp}{self.merkle_root}{self.previous_hash}{self.nonce}"
         return hashlib.sha256(block_string.encode()).hexdigest()
     
-    def add_transaction(self, transaction: Transaction, mempool: List[Transaction]) -> bool:
+    def add_transaction(self, transaction: Transaction, mempool=None) -> bool:
         """Ajoute une transaction au bloc si elle est valide."""
         # Vérifications de base
         if not transaction.verify_signature(transaction.sender):
@@ -104,7 +106,6 @@ class Block:
         # Dans un système réel, vérifier les UTXO, les doubles dépenses, etc.
         
         self.transactions.append(transaction)
-        mempool.remove(transaction)
         self.hash = self.calculate_hash()
         return True
         
@@ -149,7 +150,7 @@ class Blockchain:
         self.mempool: List[Transaction] = []
         self.difficulty = difficulty
         self.mining_reward = 50.0
-        self.halving_interval = 210000  # Blocs entre chaque division par deux de la récompense
+        self.halving_interval = 10  # Blocs entre chaque division par deux de la récompense
         
         # Créer le bloc de genèse
         self._create_genesis_block()
@@ -186,10 +187,14 @@ class Blockchain:
         
         # Ajouter des transactions de la mempool (limite de taille de bloc)
         max_transactions = 10  # Simplifié, Bitcoin utilise une limite de taille en octets
-        for _ in range(min(max_transactions, len(self.mempool))):
-            if self.mempool:
-                tx = self.mempool.pop(0)
-                block.add_transaction(tx, self.mempool)
+        transactions_to_process = self.mempool[:max_transactions]
+        self.mempool = self.mempool[max_transactions:]
+        
+        for tx in transactions_to_process:
+            # Ici, on n'a plus besoin de passer mempool comme argument
+            if not block.add_transaction(tx):
+                # Si la transaction n'a pas été ajoutée, la remettre dans le mempool
+                self.mempool.append(tx)
         
         # Miner le bloc
         block.mine_block(self.difficulty)
