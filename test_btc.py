@@ -1,50 +1,77 @@
 from bitcoin import Blockchain, Wallet
 
+def print_wallet_info(name: str, wallet: Wallet) -> None:
+    """Affiche les informations d'un portefeuille."""
+    balance = wallet.get_balance()
+    print(f"{name} - Adresse: {wallet.public_key[:10]}... | Solde: {balance:.2f} BTC")
+    
+    utxos = wallet.get_utxos()
+    if utxos:
+        print(f"  UTXOs de {name}:")
+        for utxo in utxos:
+            print(f"  - {utxo.amount:.2f} BTC (TX: {utxo.tx_hash[:8]}...:{utxo.output_index})")
+
 def chain_print(blockchain: Blockchain) -> None:
-    """Affiche la bitcoin_bc et le contenu des blocs."""
-    print("\nBlocs dans la bitcoin_bc:")
+    """Affiche la blockchain et le contenu des blocs."""
+    print("\nBlocs dans la blockchain:")
     for block in blockchain.chain:
         print(f"Bloc #{block.index} | Hash: {block.hash[:10]}... | Transactions: {len(block.transactions)}")
         for tx in block.transactions:
-            if tx.sender == "Coinbase":
-                print(f"  - Récompense de minage pour {tx.recipient[:10]}...: {tx.amount} BTC")
+            if not tx.inputs:
+                print(f"  - Récompense de minage: {tx.outputs[0].amount} BTC pour {tx.outputs[0].recipient[:10]}...")
             else:
-                print(f"  - {tx.sender[:10]}... envoie {tx.amount} BTC à {tx.recipient[:10]}...")
+                sender = "???"
+                total_input = 0
+                for tx_input in tx.inputs:
+                    input_id = f"{tx_input.tx_hash}:{tx_input.output_index}"
+                    # Note: Dans un cas réel, nous devrions rechercher l'expéditeur
+                total_output = sum(output.amount for output in tx.outputs)
+                print(f"  - Transaction: {tx.tx_hash[:10]}... | Entrées: {len(tx.inputs)} | Sorties: {len(tx.outputs)} | Total: {total_output:.2f} BTC")
 
-# Exemple d'utilisation
 def run_simulation():
-    bitcoin_bc = Blockchain(difficulty=4)
+    print("Création d'une nouvelle blockchain...")
+    bitcoin = Blockchain(difficulty=4)  # Difficulté réduite pour une simulation plus rapide
     
-    # Créer quelques portefeuilles
-    Yann = Wallet()
-    Moustafa = Wallet()
-    Bouldingue = Wallet()
+    print("\nCréation des portefeuilles...")
+    # Associer les portefeuilles à la blockchain pour la gestion des soldes
+    alice = Wallet(bitcoin)
+    bob = Wallet(bitcoin)
+    charlie = Wallet(bitcoin)
     
-    print(f"Yann: {Yann.public_key[:10]}...")
-    print(f"Moustafa: {Moustafa.public_key[:10]}...")
+    print("\nÉtat initial des portefeuilles:")
+    print_wallet_info("Alice", alice)
+    print_wallet_info("Bob", bob)
+    print_wallet_info("Charlie", charlie)
     
-    # Des transactions
-    tx1 = Yann.create_transaction(Moustafa.public_key, 10)
-    bitcoin_bc.add_transaction_to_mempool(tx1)
-
-    tx2 = Moustafa.create_transaction(Yann.public_key, 1.5)
-    bitcoin_bc.add_transaction_to_mempool(tx2)
-
-    print("\nYann mine un bloc...")
-    bitcoin_bc.mine_pending_transactions(Yann.public_key)
-
-    tx3 = Moustafa.create_transaction(Bouldingue.public_key, 10000.0)
-    bitcoin_bc.add_transaction_to_mempool(tx3)
-
-    for _ in range(10):
-        print("\nBouldingue mine un bloc...")
-        bitcoin_bc.mine_pending_transactions(Bouldingue.public_key)
+    print("\nAlice mine un bloc pour obtenir des bitcoins...")
+    bitcoin.mine_pending_transactions(alice.public_key)
     
-    # Vérifier la validité de la bitcoin_bc
-    print(f"\nLa bitcoin_bc est-elle valide? {bitcoin_bc.is_chain_valid()}")
+    print("\nBob mine un bloc pour obtenir des bitcoins...")
+    bitcoin.mine_pending_transactions(bob.public_key)
+    
+    print("\nAlice envoie 10 BTC à Bob...")
+    try:
+        tx = alice.create_transaction(bob.public_key, 60)
+        if bitcoin.add_transaction_to_mempool(tx):
+            print("Transaction ajoutée au mempool avec succès.")
+        else:
+            print("Échec de l'ajout de la transaction au mempool.")
+    except ValueError as e:
+        print(f"Erreur: {e}")
+    
+    print("\nCharlie mine un bloc (incluant la transaction d'Alice à Bob)...")
+    bitcoin.mine_pending_transactions(charlie.public_key)
+    
+    print("\nÉtat final des portefeuilles:")
+    print_wallet_info("Alice", alice)
+    print_wallet_info("Bob", bob)
+    print_wallet_info("Charlie", charlie)
+    
+    print("\nVérification de la validité de la chaîne...")
+    is_valid = bitcoin.is_chain_valid()
+    print(f"La blockchain est {'valide' if is_valid else 'invalide'}")
+    
+    chain_print(bitcoin)
 
-    chain_print(bitcoin_bc)
-
-# Simulation
 if __name__ == "__main__":
     run_simulation()
